@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import {
     fetchDashboardDataWithCache,
-    extractUidContainers,
-    parseResponse,
-    selectAccount,
-    extractFormHiddenFields
+    selectAccount
 } from '@/lib/volyn-scraper';
+
+import {
+    extractUidContainers,
+    extractFormHiddenFields,
+    parseResponse
+} from '@/lib/scraper/html-paeser'
 
 export async function GET() {
     const email = process.env.VOLYN_EMAIL;

@@ -202,6 +202,31 @@ export interface UidorFormData {
 }
 
 /**
+ * Step 3: Fetches the dashboard / profile page and extracts the payment amount.
+ */
+export async function getDashboardData(cookies: string): Promise<string> {
+    const dashboardUrl = 'https://pay.elektro.volyn.ua/my/uidor';
+
+    const response = await fetch(dashboardUrl, {
+        method: 'GET',
+        headers: {
+            'User-Agent': DEFAULT_USER_AGENT,
+            'Cookie': cookies,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        },
+        redirect: 'follow',
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch dashboard page: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    return html;
+}
+
+/**
+ * Step 4:
  * Submits the Uidor form to switch/select an account.
  * Returns the potential redirect URL and updated cookies.
  */
@@ -264,109 +289,4 @@ export async function selectAccount(
         cookies: mergedCookies,
         response: response
     };
-}
-
-export function parseResponse(html: string): Record<string, string> {
-    const uid = html.match(/data-uid="([^"]+)"/)?.[1];
-
-    const result: Record<string, string> = {};
-    if (uid) {
-        result['data-uid'] = uid;
-    }
-
-    const regex = /<span>([\s\S]*?)<\/span>/g;
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-        const parts = match[1].split(':');
-        const key = parts[0]?.trim();
-        const value = parts.slice(1).join(':').trim();
-        if (key) {
-            result[key] = value;
-        }
-    }
-
-    return result;
-}
-
-/**
- * Step 3: Fetches the dashboard / profile page and extracts the payment amount.
- */
-export async function getDashboardData(cookies: string): Promise<string> {
-    const dashboardUrl = 'https://pay.elektro.volyn.ua/my/uidor';
-
-    const response = await fetch(dashboardUrl, {
-        method: 'GET',
-        headers: {
-            'User-Agent': DEFAULT_USER_AGENT,
-            'Cookie': cookies,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        },
-        redirect: 'follow',
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard page: ${response.status} ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    return html;
-}
-
-type HiddenFields = {
-    form_build_id: string|undefined,
-    form_token: string|undefined
-};
-
-export function extractFormHiddenFields(html: string): HiddenFields {
-    return {
-        form_build_id: html.match(
-            /<input[^>]+name="form_build_id"[^>]+value="([^"]+)"/
-        )?.[1],
-
-        form_token: html.match(
-            /<input[^>]+name="form_token"[^>]+value="([^"]+)"/
-        )?.[1],
-    };
-}
-
-/**
- * Extracts all div blocks with class "uid_container allowed_uid" from the HTML content.
- */
-export function extractUidContainers(html: string): string[] {
-    const results: string[] = [];
-    const regex = /<div\s+[^>]*class=["'](?:[^"']*\s+)?uid_container\s+allowed_uid(?:\s+[^"']*)?["'][^>]*>/gi;
-
-    let match;
-    const htmlLower = html.toLowerCase();
-
-    while ((match = regex.exec(html)) !== null) {
-        const startIdx = match.index;
-        const tagOpenLength = match[0].length;
-        let depth = 1;
-        let cursor = startIdx + tagOpenLength;
-
-        while (depth > 0 && cursor < html.length) {
-            const nextDivOpen = htmlLower.indexOf('<div', cursor);
-            const nextDivClose = htmlLower.indexOf('</div>', cursor);
-
-            if (nextDivClose === -1) {
-                break;
-            }
-
-            if (nextDivOpen !== -1 && nextDivOpen < nextDivClose) {
-                depth++;
-                cursor = nextDivOpen + 4;
-            } else {
-                depth--;
-                cursor = nextDivClose + 6;
-            }
-        }
-
-        if (depth === 0) {
-            const containerHtml = html.substring(startIdx, cursor);
-            results.push(containerHtml);
-        }
-    }
-
-    return results;
 }

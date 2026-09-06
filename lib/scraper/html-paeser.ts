@@ -1,3 +1,5 @@
+import * as cheerio from 'cheerio';
+
 /**
  * Extracts all div blocks with class "uid_container allowed_uid" from the HTML content.
  */
@@ -77,4 +79,15 @@ export function parseResponse(html: string): Record<string, string> {
     }
 
     return result;
+}
+
+export function parseTable(html: string): {name: string, value: string}[] {
+    const $ = cheerio.load(html);
+
+    return $('table.custom_table_vertical tr').map((_, row) => {
+        return {
+            name: $(row).find('th').text().trim(),
+            value: $(row).find('td').text().trim()
+        };
+    }).get();
 }

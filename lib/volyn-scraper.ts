@@ -1,3 +1,6 @@
+import { parseTable } from "@/lib/scraper/html-paeser";
+
+
 /**
  * Volyn Electricity Scraper - Steps 1, 2, and 3
  */
@@ -289,4 +292,37 @@ export async function selectAccount(
         cookies: mergedCookies,
         response: response
     };
+}
+
+
+/**
+ * Step 5:
+ *
+ */
+export async function getAccountData(email: string, pass: string, url: string) {
+
+    const cookies = await getAuthenticatedSession(email, pass);
+
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'User-Agent': DEFAULT_USER_AGENT,
+            'Cookie': cookies,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        },
+        redirect: 'follow',
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch account page: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+
+    // console.log(
+    //     html,
+    //     parseTable(html)
+    // );
+
+    return parseTable(html);
 }

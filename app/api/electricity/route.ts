@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
     fetchDashboardDataWithCache,
-    selectAccount
+    selectAccount,
+    getAccountData
 } from '@/lib/volyn-scraper';
 
 import {
@@ -35,7 +36,8 @@ export async function GET() {
             return parseResponse(item)
         });
 
-        let selectedAccount = null
+        let selectedAccount = null;
+        let accountData = null;
 
         if (hiddenFields.form_build_id && hiddenFields.form_token) {
             selectedAccount = await selectAccount(
@@ -52,13 +54,22 @@ export async function GET() {
             // console.log('=========', selectedAccount);
         }
 
+        if (selectedAccount && selectedAccount.redirectUrl) {
+            accountData = await getAccountData(
+                email,
+                password,
+                selectedAccount.redirectUrl
+            );
+        }
+
         return NextResponse.json({
             status: 'success',
             message: 'Successfully fetched and parsed account page',
             containersCount: containers.length,
             containers: containers,
             hiddenFields: hiddenFields,
-            selectedAccount: selectedAccount
+            selectedAccount: selectedAccount,
+            accountData: accountData
         });
     } catch (error: any) {
         return NextResponse.json(

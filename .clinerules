@@ -1,0 +1,5 @@
+# Cline Rules for Formatting and Code Generation
+
+- **Indentation Rule**: All generated code, code snippets, file edits, and refactorings (JavaScript, TypeScript, TSX, HTML, CSS, JSON, etc.) MUST use exactly **4 spaces** for indentation.
+- **No 2-Space Indentation**: Never use 2 spaces or tabs for code indentation. Always use 4 spaces.
+- **Quality**: Ensure all generated code is complete, functional, and adheres to the project conventions.

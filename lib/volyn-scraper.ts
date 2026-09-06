@@ -2,9 +2,65 @@
  * Volyn Electricity Scraper - Steps 1, 2, and 3
  */
 
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 export interface ScraperSession {
     formBuildId: string;
     cookies: string;
+}
+
+/**
+ * Extracts cookie string from response headers (supports both getSetCookie and set-cookie).
+ */
+export function extractCookiesFromHeaders(headers: Headers): string {
+    if (typeof headers.getSetCookie === 'function') {
+        const setCookies = headers.getSetCookie();
+        return setCookies.map(cookie => cookie.split(';')[0]).join('; ');
+    }
+
+    const setCookieHeader = headers.get('set-cookie');
+    if (setCookieHeader) {
+        return setCookieHeader
+            .split(/,(?=[^ \t]+=)/)
+            .map(c => c.trim().split(';')[0])
+            .join('; ');
+    }
+
+    return '';
+}
+
+/**
+ * Merges two cookie strings uniquely by cookie name using a Map.
+ */
+export function mergeCookies(oldCookies: string, newCookies: string): string {
+    const cookieMap = new Map<string, string>();
+
+    const parseAndSet = (cookieString: string) => {
+        cookieString.split(';').forEach(c => {
+            const [key, ...val] = c.trim().split('=');
+            if (key) cookieMap.set(key, val.join('='));
+        });
+    };
+
+    parseAndSet(oldCookies);
+    parseAndSet(newCookies);
+
+    return Array.from(cookieMap.entries())
+        .map(([k, v]) => `${k}=${v}`)
+        .join('; ');
+}
+
+/**
+ * Extracts form_build_id from login page HTML using regular expressions.
+ */
+export function extractFormBuildId(html: string): string {
+    const match = html.match(/name="form_build_id"\s+value="([^"]+)"/i) || html.match(/value="([^"]+)"[^>]+name="form_build_id"/i);
+
+    if (!match || !match[1]) {
+        throw new Error('Could not find form_build_id on the login page');
+    }
+
+    return match[1];
 }
 
 /**
@@ -16,7 +72,7 @@ export async function getLoginContext(): Promise<ScraperSession> {
     const response = await fetch(url, {
         method: 'GET',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': DEFAULT_USER_AGENT,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         },
     });
@@ -26,34 +82,12 @@ export async function getLoginContext(): Promise<ScraperSession> {
     }
 
     const html = await response.text();
-
-    // Extract cookies from Set-Cookie headers
-    let cookiesString = '';
-    if (typeof response.headers.getSetCookie === 'function') {
-        const setCookies = response.headers.getSetCookie();
-        cookiesString = setCookies.map(cookie => cookie.split(';')[0]).join('; ');
-    } else {
-        const setCookieHeader = response.headers.get('set-cookie');
-        if (setCookieHeader) {
-            cookiesString = setCookieHeader
-                .split(/,(?=[^ \t]+=)/)
-                .map(c => c.trim().split(';')[0])
-                .join('; ');
-        }
-    }
-
-    // Extract form_build_id using regex
-    const match = html.match(/name="form_build_id"\s+value="([^"]+)"/i) || html.match(/value="([^"]+)"[^>]+name="form_build_id"/i);
-
-    if (!match || !match[1]) {
-        throw new Error('Could not find form_build_id on the login page');
-    }
-
-    const formBuildId = match[1];
+    const cookies = extractCookiesFromHeaders(response.headers);
+    const formBuildId = extractFormBuildId(html);
 
     return {
         formBuildId,
-        cookies: cookiesString,
+        cookies,
     };
 }
 
@@ -76,7 +110,7 @@ export async function loginToVolyn(email: string, pass: string): Promise<string>
     const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': DEFAULT_USER_AGENT,
             'Content-Type': 'application/x-www-form-urlencoded',
             'Cookie': context.cookies,
             'Origin': 'https://pay.elektro.volyn.ua',
@@ -86,35 +120,8 @@ export async function loginToVolyn(email: string, pass: string): Promise<string>
         redirect: 'manual',
     });
 
-    let newCookiesString = '';
-    if (typeof response.headers.getSetCookie === 'function') {
-        const setCookies = response.headers.getSetCookie();
-        newCookiesString = setCookies.map(cookie => cookie.split(';')[0]).join('; ');
-    } else {
-        const setCookieHeader = response.headers.get('set-cookie');
-        if (setCookieHeader) {
-            newCookiesString = setCookieHeader
-                .split(/,(?=[^ \t]+=)/)
-                .map(c => c.trim().split(';')[0])
-                .join('; ');
-        }
-    }
-
-    const cookieMap = new Map<string, string>();
-
-    context.cookies.split(';').forEach(c => {
-        const [key, ...val] = c.trim().split('=');
-        if (key) cookieMap.set(key, val.join('='));
-    });
-
-    newCookiesString.split(';').forEach(c => {
-        const [key, ...val] = c.trim().split('=');
-        if (key) cookieMap.set(key, val.join('='));
-    });
-
-    const mergedCookies = Array.from(cookieMap.entries())
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; ');
+    const newCookiesString = extractCookiesFromHeaders(response.headers);
+    const mergedCookies = mergeCookies(context.cookies, newCookiesString);
 
     if (response.status !== 302 && response.status !== 303 && response.status !== 200) {
         throw new Error(`Login failed with status: ${response.status}`);
@@ -122,6 +129,7 @@ export async function loginToVolyn(email: string, pass: string): Promise<string>
 
     return mergedCookies;
 }
+
 
 // In-memory cache for 30 minutes
 interface CachedSession {
@@ -162,7 +170,7 @@ export function clearSessionCache() {
 /**
  * High-level helper: Fetches electricity bill with automatic session caching and retry on auth failure.
  */
-export async function fetchElectricityBillWithCache(email: string, pass: string): Promise<string> {
+export async function fetchDashboardDataWithCache(email: string, pass: string): Promise<string> {
     try {
         let cookies = await getAuthenticatedSession(email, pass);
         let html = await getDashboardData(cookies);
@@ -183,20 +191,99 @@ export async function fetchElectricityBillWithCache(email: string, pass: string)
     }
 }
 
-export function parseResponse(html) {
-    const uid = html.match(/data-uid="([^"]+)"/)?.[1];
+/**
+ * Interface for Uidor form data.
+ */
+export interface UidorFormData {
+    formBuildId: string;
+    formToken: string;
+    formId: string;
+    dummySubmit: string;
+}
 
-    const result = {
-        'data-uid': uid
+/**
+ * Submits the Uidor form to switch/select an account.
+ * Returns the potential redirect URL and updated cookies.
+ */
+export async function selectAccount(
+    email: string,
+    pass: string,
+    data: UidorFormData
+): Promise<{ redirectUrl: string | null; cookies: string, response: Response }> {
+    const url = 'https://pay.elektro.volyn.ua/my/uidor';
+
+    const cookies = await getAuthenticatedSession(email, pass);
+
+    const formData = new URLSearchParams({
+        form_build_id: data.formBuildId,
+        form_token: data.formToken,
+        form_id: data.formId,
+        dummy_submit: data.dummySubmit,
+    });
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'User-Agent': DEFAULT_USER_AGENT,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookies,
+            'Origin': 'https://pay.elektro.volyn.ua',
+            'Referer': 'https://pay.elektro.volyn.ua/my/uidor',
+        },
+        body: formData.toString(),
+        redirect: 'manual',
+    });
+
+    const newCookies = extractCookiesFromHeaders(response.headers);
+    const mergedCookies = mergeCookies(cookies, newCookies);
+    // const redirectUrl = response.headers.get('location');
+
+    const headers = Object.fromEntries(response.headers.entries());
+
+    if (response.status !== 303 && response.status !== 302 && response.status !== 200) {
+        throw new Error(`Uidor submission failed with status: ${response.status}`);
+    }
+
+    const now = Date.now();
+
+    sessionCache = {
+        cookies: mergedCookies,
+        expiresAt: now + SESSION_TTL,
     };
 
-    const spans = [...html.matchAll(/<span>(.*?)<\/span>/gs)];
+    // console.log('==========');
 
-    spans.forEach(match => {
-        const [key, ...valueParts] = match[1].split(':');
+    // console.log(
+    //     // response,
+    //     headers,
+    //     headers.location
+    // );
 
-        result[key.trim()] = valueParts.join(':').trim();
-    });
+    return {
+        redirectUrl: headers.location,
+        cookies: mergedCookies,
+        response: response
+    };
+}
+
+export function parseResponse(html: string): Record<string, string> {
+    const uid = html.match(/data-uid="([^"]+)"/)?.[1];
+
+    const result: Record<string, string> = {};
+    if (uid) {
+        result['data-uid'] = uid;
+    }
+
+    const regex = /<span>([\s\S]*?)<\/span>/g;
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+        const parts = match[1].split(':');
+        const key = parts[0]?.trim();
+        const value = parts.slice(1).join(':').trim();
+        if (key) {
+            result[key] = value;
+        }
+    }
 
     return result;
 }
@@ -210,7 +297,7 @@ export async function getDashboardData(cookies: string): Promise<string> {
     const response = await fetch(dashboardUrl, {
         method: 'GET',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': DEFAULT_USER_AGENT,
             'Cookie': cookies,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         },
@@ -223,6 +310,23 @@ export async function getDashboardData(cookies: string): Promise<string> {
 
     const html = await response.text();
     return html;
+}
+
+type HiddenFields = {
+    form_build_id: string|undefined,
+    form_token: string|undefined
+};
+
+export function extractFormHiddenFields(html: string): HiddenFields {
+    return {
+        form_build_id: html.match(
+            /<input[^>]+name="form_build_id"[^>]+value="([^"]+)"/
+        )?.[1],
+
+        form_token: html.match(
+            /<input[^>]+name="form_token"[^>]+value="([^"]+)"/
+        )?.[1],
+    };
 }
 
 /**

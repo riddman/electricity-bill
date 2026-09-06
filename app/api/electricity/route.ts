@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fetchElectricityBillWithCache, extractUidContainers, parseResponse } from '@/lib/volyn-scraper';
+import {
+    fetchDashboardDataWithCache,
+    extractUidContainers,
+    parseResponse,
+    selectAccount,
+    extractFormHiddenFields
+} from '@/lib/volyn-scraper';
 
 export async function GET() {
     const email = process.env.VOLYN_EMAIL;
@@ -17,18 +23,39 @@ export async function GET() {
 
     try {
         // Fetch bill using cached session (or login if cache is empty/expired)
-        const html = await fetchElectricityBillWithCache(email, password);
+        const html = await fetchDashboardDataWithCache(email, password);
+
+        const hiddenFields = extractFormHiddenFields(html)
 
         // Extract all div blocks with class uid_container allowed_uid
         const containers = extractUidContainers(html).map((item) => {
             return parseResponse(item)
         });
 
+        let selectedAccount = null
+
+        if (hiddenFields.form_build_id && hiddenFields.form_token) {
+            selectedAccount = await selectAccount(
+                email,
+                password,
+                {
+                    formBuildId: hiddenFields.form_build_id,
+                    formToken: hiddenFields.form_token,
+                    formId: 'user_profile_uidor_form',
+                    dummySubmit: containers[0]['data-uid']
+                }
+            );
+
+            // console.log('=========', selectedAccount);
+        }
+
         return NextResponse.json({
             status: 'success',
             message: 'Successfully fetched and parsed account page',
             containersCount: containers.length,
             containers: containers,
+            hiddenFields: hiddenFields,
+            selectedAccount: selectedAccount
         });
     } catch (error: any) {
         return NextResponse.json(

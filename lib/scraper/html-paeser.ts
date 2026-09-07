@@ -84,7 +84,7 @@ export function parseResponse(html: string): Record<string, string> {
 export function parseTable(html: string): {name: string, value: string}[] {
     const $ = cheerio.load(html);
 
-    return $('table.custom_table_vertical tr').map((_, row) => {
+    return $('#pc-version').find('table.custom_table_vertical tr').map((_, row) => {
         return {
             name: $(row).find('th').text().trim(),
             value: $(row).find('td').text().trim()

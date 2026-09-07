@@ -71,7 +71,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                             Доступ обмежено
                         </h1>
                         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            Для перегляду панелі керування введіть пароль доступу.
+                            Для перегляду Особового рахунку введіть пароль доступу.
                         </p>
                     </div>
 
@@ -112,7 +112,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     return (
         <main className="p-6">
-            <h1 className="text-2xl font-bold">Панель керування</h1>
+            <h1 className="text-2xl font-bold">Особовий рахунок</h1>
 
             <div className="grid grid-cols-[minmax(120px,35%)_1fr] border rounded-xl">
                 {
